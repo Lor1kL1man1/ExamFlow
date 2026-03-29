@@ -7,3 +7,4 @@ psycopg2-binary==2.9.9   # swap for SQLite: comment this line out
 python-dotenv==1.0.1
 gunicorn==22.0.0
 anthropic>=0.25.0
+groq>=0.9.0
