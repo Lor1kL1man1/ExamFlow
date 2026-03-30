@@ -23,6 +23,18 @@ export default function StaffPage({ toast }) {
   };
   const closeModal = () => setEditUser(null);
 
+  const removeUser = async (user) => {
+    const ok = window.confirm(`Delete staff member ${user.name}?`);
+    if (!ok) return;
+    try {
+      await put(`/users/${user.id}`, { is_active: false });
+      toast("Staff member deleted", "success");
+      load();
+    } catch {
+      toast("Error deleting staff member", "error");
+    }
+  };
+
   const submit = async () => {
     try {
       if (editUser && editUser.id) {
@@ -68,6 +80,9 @@ export default function StaffPage({ toast }) {
               </div>
               <button onClick={() => openEdit(u)} title="Edit" style={{ border: "none", background: "none", cursor: "pointer", color: "#94A3B8", padding: 4 }}>
                 <Icon d={Icons.edit} size={15} />
+              </button>
+              <button onClick={() => removeUser(u)} title="Delete" style={{ border: "none", background: "none", cursor: "pointer", color: "#DC2626", padding: 4, fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>
+                Delete
               </button>
             </div>
             <Badge color={roleColor[u.role] || "#64748B"}>{u.role}</Badge>
