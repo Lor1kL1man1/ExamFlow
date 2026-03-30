@@ -1,8 +1,20 @@
 import { useState, useRef, useEffect } from "react";
 import { API } from "../utils/api";
 
-// stable session id per page load
-const SESSION_ID = "sess_" + Math.random().toString(36).slice(2);
+const SESSION_STORAGE_KEY = "examflow_ai_session_id";
+const makeSessionId = () => "sess_" + Math.random().toString(36).slice(2);
+const getOrCreateSessionId = () => {
+  try {
+    const existing = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (existing) return existing;
+    const created = makeSessionId();
+    localStorage.setItem(SESSION_STORAGE_KEY, created);
+    return created;
+  } catch {
+    return makeSessionId();
+  }
+};
+const constraintsStorageKey = (sessionId) => `examflow_ai_constraints_${sessionId}`;
 
 // ── Constraint kind metadata ──────────────────────────────────────────────────
 const KIND_META = {
@@ -136,6 +148,7 @@ const TypingIndicator = () => (
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function ExamFlowAIAgent({ toast }) {
+  const sessionIdRef = useRef(getOrCreateSessionId());
   const [messages, setMessages] = useState([{
     role: "assistant",
     content: "Hi! I'm ExamBot — your AI scheduling assistant. Tell me any scheduling preferences or constraints you want applied before generating the exam schedule. For example: \"All exams taught by Professor Ervin should be scheduled on Fridays.\"",
@@ -154,6 +167,46 @@ export default function ExamFlowAIAgent({ toast }) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
+  useEffect(() => {
+    const sessionId = sessionIdRef.current;
+
+    // 1) Restore quickly from local storage for better UX
+    try {
+      const raw = localStorage.getItem(constraintsStorageKey(sessionId));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setConstraints(parsed);
+      }
+    } catch {
+      // ignore local storage parse errors
+    }
+
+    // 2) Sync from backend session (source of truth while backend is alive)
+    (async () => {
+      try {
+        const res = await fetch(`${API}/agent/constraints?session_id=${encodeURIComponent(sessionId)}`);
+        const data = await res.json();
+        const next = Array.isArray(data?.constraints) ? data.constraints : [];
+        setConstraints(next);
+        try {
+          localStorage.setItem(constraintsStorageKey(sessionId), JSON.stringify(next));
+        } catch {
+          // ignore local storage write errors
+        }
+      } catch {
+        // keep local copy if backend fetch fails
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(constraintsStorageKey(sessionIdRef.current), JSON.stringify(constraints));
+    } catch {
+      // ignore local storage write errors
+    }
+  }, [constraints]);
+
   const send = async (text) => {
     const userText = text || input.trim();
     if (!userText || loading) return;
@@ -165,7 +218,7 @@ export default function ExamFlowAIAgent({ toast }) {
       const res = await fetch(`${API}/agent/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: SESSION_ID, message: userText }),
+        body: JSON.stringify({ session_id: sessionIdRef.current, message: userText }),
       });
       const data = await res.json();
 
@@ -193,7 +246,7 @@ export default function ExamFlowAIAgent({ toast }) {
 
   const removeConstraint = async (index) => {
     try {
-      await fetch(`${API}/agent/constraints/${index}?session_id=${SESSION_ID}`, { method: "DELETE" });
+      await fetch(`${API}/agent/constraints/${index}?session_id=${sessionIdRef.current}`, { method: "DELETE" });
       setConstraints(prev => prev.filter((_, i) => i !== index));
     } catch (_) {
       setConstraints(prev => prev.filter((_, i) => i !== index));
@@ -205,7 +258,7 @@ export default function ExamFlowAIAgent({ toast }) {
       await fetch(`${API}/agent/clear`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: SESSION_ID }),
+        body: JSON.stringify({ session_id: sessionIdRef.current }),
       });
     } catch (_) {}
     setConstraints([]);
@@ -225,7 +278,7 @@ export default function ExamFlowAIAgent({ toast }) {
       const res = await fetch(`${API}/schedule/generate-with-constraints`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: SESSION_ID }),
+        body: JSON.stringify({ session_id: sessionIdRef.current }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Generation failed");
