@@ -75,6 +75,43 @@ def _register_routes(app: Flask):
             shared.like(f"%,{code}"),
         )
 
+    def _normalize_shared_departments(raw_value, owner_department_id: int | None = None):
+        from app.models.department import Department
+
+        if raw_value is None:
+            return None
+
+        tokens = []
+        if isinstance(raw_value, str):
+            tokens = [x.strip() for x in raw_value.replace(";", ",").split(",") if x.strip()]
+        elif isinstance(raw_value, list):
+            tokens = [str(x).strip() for x in raw_value if str(x).strip()]
+        else:
+            tokens = [str(raw_value).strip()]
+
+        if not tokens:
+            return None
+
+        owner_code = None
+        if owner_department_id:
+            owner = Department.query.get(owner_department_id)
+            owner_code = owner.code.upper() if owner and owner.code else None
+
+        normalized_codes = set()
+        for token in tokens:
+            dept = None
+            if token.isdigit():
+                dept = Department.query.get(int(token))
+            if not dept:
+                dept = Department.query.filter(func.upper(Department.code) == token.upper()).first()
+            if dept and dept.code:
+                code = dept.code.upper()
+                if owner_code and code == owner_code:
+                    continue
+                normalized_codes.add(code)
+
+        return ",".join(sorted(normalized_codes)) if normalized_codes else None
+
     def _resolve_workspace(manager_id: int | None):
         from app.models.user import User, UserRole
         from app.models.period import Period
@@ -460,6 +497,10 @@ def _register_routes(app: Flask):
         if not sem_id:
             active_sem = Semester.query.filter_by(is_active=True).first()
             sem_id = active_sem.id if active_sem else None
+
+        shared_raw = data.get("shared_with_departments", data.get("shared_department_ids"))
+        shared_with_departments = _normalize_shared_departments(shared_raw, owner_department_id=data["department_id"])
+
         course = Course(
             code=data["code"],
             name=data["name"],
@@ -467,6 +508,7 @@ def _register_routes(app: Flask):
             student_count=data["student_count"],
             semester_id=sem_id,
             year=data.get("year"),
+            shared_with_departments=shared_with_departments,
         )
         for uid in data.get("instructor_ids", []):
             u = User.query.get(uid)
@@ -498,6 +540,10 @@ def _register_routes(app: Flask):
         for key in ("code", "name", "department_id", "student_count", "semester_id", "year"):
             if key in data:
                 setattr(course, key, data[key])
+        if "shared_with_departments" in data or "shared_department_ids" in data:
+            raw_shared = data.get("shared_with_departments", data.get("shared_department_ids"))
+            owner_department_id = data.get("department_id", course.department_id)
+            course.shared_with_departments = _normalize_shared_departments(raw_shared, owner_department_id=owner_department_id)
         if "instructor_ids" in data:
             course.instructors = [User.query.get(uid) for uid in data["instructor_ids"] if User.query.get(uid)]
         db.session.commit()

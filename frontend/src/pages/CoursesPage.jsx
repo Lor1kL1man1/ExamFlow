@@ -4,7 +4,7 @@ import { Icons } from "../utils/constants";
 import { Btn, Card, Input, Select, Modal, Badge, Icon } from "../components/ui";
 
 const YEAR_COLORS = { 1: "#2563EB", 2: "#059669", 3: "#D97706", 4: "#7C3AED" };
-const BLANK = { code: "", name: "", department_id: "", student_count: 30, semester_id: "", year: "", instructor_ids: [] };
+const BLANK = { code: "", name: "", department_id: "", student_count: 30, semester_id: "", year: "", instructor_ids: [], shared_department_ids: [] };
 
 const parseSharedCodes = (value) =>
   String(value || "")
@@ -42,6 +42,11 @@ export default function CoursesPage({ toast }) {
     setEditCourse(false);
   };
   const openEdit = (c) => {
+    const sharedCodes = parseSharedCodes(c.shared_with_departments);
+    const sharedDepartmentIds = depts
+      .filter((d) => sharedCodes.includes(String(d.code || "").toUpperCase()))
+      .map((d) => d.id);
+
     setForm({
       code: c.code, name: c.name,
       department_id: c.department_id || "",
@@ -49,6 +54,7 @@ export default function CoursesPage({ toast }) {
       semester_id: c.semester_id || "",
       year: c.year || "",
       instructor_ids: (c.instructors || []).map(u => u.id),
+      shared_department_ids: sharedDepartmentIds,
     });
     setEditCourse(c);
   };
@@ -56,7 +62,13 @@ export default function CoursesPage({ toast }) {
 
   const submit = async () => {
     try {
-      const payload = { ...form, department_id: +form.department_id, semester_id: form.semester_id ? +form.semester_id : null, year: form.year ? +form.year : null };
+      const payload = {
+        ...form,
+        department_id: +form.department_id,
+        semester_id: form.semester_id ? +form.semester_id : null,
+        year: form.year ? +form.year : null,
+        shared_department_ids: (form.shared_department_ids || []).filter((id) => +id !== +form.department_id).map((id) => +id),
+      };
       if (editCourse && editCourse.id) {
         await put(`/courses/${editCourse.id}`, payload);
         toast("Course updated!", "success");
@@ -114,7 +126,12 @@ export default function CoursesPage({ toast }) {
                   {c.semester ? <Badge color="#0369A1">{c.semester}</Badge> : <span style={{ color: "#CBD5E1", fontSize: 12 }}>—</span>}
                 </td>
                 <td style={{ padding: "12px 16px" }}>
-                  {c.department && <Badge color={c.department.color || "#64748B"}>{c.department.code}</Badge>}
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    {c.department && <Badge color={c.department.color || "#64748B"}>{c.department.code}</Badge>}
+                    {parseSharedCodes(c.shared_with_departments)
+                      .filter(code => code !== String(c.department?.code || "").toUpperCase())
+                      .map(code => <Badge key={`${c.id}-${code}`} color="#334155">{code}</Badge>)}
+                  </div>
                 </td>
                 <td style={{ padding: "12px 16px", color: "#374151", fontSize: 13 }}>{c.student_count}</td>
                 <td style={{ padding: "12px 16px" }}>
@@ -151,6 +168,29 @@ export default function CoursesPage({ toast }) {
                 <option value="">Select semester...</option>
                 {semesters.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </Select>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#64748B", letterSpacing: "0.05em" }}>SHARED WITH DEPARTMENTS (OPTIONAL)</label>
+              <div style={{ border: "1.5px solid #E2E8F0", borderRadius: 8, padding: 8, maxHeight: 110, overflowY: "auto", display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {depts
+                  .filter((d) => +d.id !== +form.department_id)
+                  .map((d) => (
+                    <label key={d.id} style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", padding: "4px 8px", borderRadius: 6, background: form.shared_department_ids.includes(d.id) ? "#E0E7FF" : "#F8FAFC", fontSize: 12, color: "#374151" }}>
+                      <input
+                        type="checkbox"
+                        checked={form.shared_department_ids.includes(d.id)}
+                        onChange={e => setForm(f => ({
+                          ...f,
+                          shared_department_ids: e.target.checked
+                            ? [...f.shared_department_ids, d.id]
+                            : f.shared_department_ids.filter(id => id !== d.id),
+                        }))}
+                      />
+                      {d.name}
+                    </label>
+                  ))}
+                {depts.filter((d) => +d.id !== +form.department_id).length === 0 && <span style={{ fontSize: 12, color: "#94A3B8" }}>No other departments available</span>}
+              </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <Select label="Year" value={form.year} onChange={e => setForm(f => ({ ...f, year: e.target.value }))}>
