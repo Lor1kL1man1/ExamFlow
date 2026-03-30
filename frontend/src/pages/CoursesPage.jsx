@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { get, post, put } from "../utils/api";
+import { get, post, put, del } from "../utils/api";
 import { Icons } from "../utils/constants";
 import { Btn, Card, Input, Select, Modal, Badge, Icon } from "../components/ui";
 
@@ -59,6 +59,18 @@ export default function CoursesPage({ toast }) {
     setEditCourse(c);
   };
   const closeModal = () => setEditCourse(null);
+
+  const removeCourse = async (course) => {
+    const ok = window.confirm(`Delete course ${course.code} - ${course.name}?`);
+    if (!ok) return;
+    try {
+      await del(`/courses/${course.id}`);
+      toast("Course deleted", "success");
+      reload();
+    } catch {
+      toast("Error deleting course", "error");
+    }
+  };
 
   const submit = async () => {
     try {
@@ -142,9 +154,14 @@ export default function CoursesPage({ toast }) {
                   </div>
                 </td>
                 <td style={{ padding: "12px 16px" }}>
-                  <button onClick={() => openEdit(c)} style={{ border: "none", background: "none", cursor: "pointer", color: "#64748B", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontFamily: "inherit", fontWeight: 600 }}>
-                    <Icon d={Icons.edit} size={13} /> Edit
-                  </button>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <button onClick={() => openEdit(c)} style={{ border: "none", background: "none", cursor: "pointer", color: "#64748B", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontFamily: "inherit", fontWeight: 600 }}>
+                      <Icon d={Icons.edit} size={13} /> Edit
+                    </button>
+                    <button onClick={() => removeCourse(c)} style={{ border: "none", background: "none", cursor: "pointer", color: "#DC2626", display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontFamily: "inherit", fontWeight: 700 }}>
+                      Delete
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

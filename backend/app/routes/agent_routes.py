@@ -33,10 +33,17 @@ def register_agent_routes(app):
             result = agent.chat(message)
         except Exception as e:
             err_str = str(e)
+            err_low = err_str.lower()
             # Surface quota / auth errors as readable JSON
-            if "429" in err_str or "rate_limit" in err_str.lower() or "rate limit" in err_str.lower():
+            if "429" in err_str or "rate_limit" in err_low or "rate limit" in err_low:
                 return jsonify({"error": "AI API rate limit reached. Please wait a moment and try again.", "detail": err_str[:300]}), 429
-            if "401" in err_str or "403" in err_str or "api_key" in err_str.lower() or "authentication" in err_str.lower():
+            if (
+                "groq_api_key is not set" in err_low
+                or "invalid api key" in err_low
+                or "invalid_api_key" in err_low
+                or "authentication" in err_low
+                or "401" in err_str
+            ):
                 return jsonify({"error": "GROQ_API_KEY is invalid or missing.", "detail": err_str[:300]}), 403
             return jsonify({"error": "AI agent error", "detail": err_str[:300]}), 500
         return jsonify(result)
